@@ -77,6 +77,96 @@ func (c *SmtpClient) Noop() error {
 	return nil
 }
 
+func (c *SmtpClient) Mail(from string) error {
+	id, err := c.proto.Cmd(fmt.Sprintf("MAIL FROM:<%s>", from))
+
+	if err != nil {
+		return err
+	}
+
+	c.proto.StartResponse(id)
+	defer c.proto.EndResponse(id)
+	_, msg, err := c.proto.ReadResponse(250)
+
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Mail result: %s\n", msg)
+
+	return nil
+}
+
+func (c *SmtpClient) Recipient(to string) error {
+	id, err := c.proto.Cmd(fmt.Sprintf("RECIPIENT TO:<%s>", to))
+
+	if err != nil {
+		return err
+	}
+
+	c.proto.StartResponse(id)
+	defer c.proto.EndResponse(id)
+	_, msg, err := c.proto.ReadResponse(250)
+
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Recipient result: %s\n", msg)
+
+	return nil
+}
+
+func (c *SmtpClient) Data(content string) error {
+	id, err := c.proto.Cmd("DATA")
+
+	if err != nil {
+		return err
+	}
+
+	c.proto.StartResponse(id)
+	defer c.proto.EndResponse(id)
+	_, _, err = c.proto.ReadResponse(354)
+
+	if err != nil {
+		return err
+	}
+
+	for _, line := range strings.Split(content, ".") {
+		id, err = c.proto.Cmd(line)
+
+		if err != nil {
+			return err
+		}
+
+		c.proto.StartResponse(id)
+		defer c.proto.EndResponse(id)
+
+		_, _, err = c.proto.ReadResponse(250)
+
+		if err != nil {
+			return err
+		}
+	}
+
+	id, err = c.proto.Cmd(".")
+
+	if err != nil {
+		return err
+	}
+
+	c.proto.StartResponse(id)
+	defer c.proto.EndResponse(id)
+
+	_, _, err = c.proto.ReadResponse(250)
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func handleError(err error) {
 	if err != nil {
 		fmt.Printf("error: %s\n", err)
