@@ -158,7 +158,35 @@ func (c *SmtpClient) Quit() error {
 	return nil
 }
 
-func (c *SmtpClient) SendMail(to string, from string, content string) error {
+func (c *SmtpClient) sendHeaders(to string, from string, subject string) error {
+	err := c.proto.Writer.PrintfLine(fmt.Sprintf("From:%s", from))
+
+	if err != nil {
+		return err
+	}
+
+	err = c.proto.Writer.PrintfLine(fmt.Sprintf("To:%s", to))
+
+	if err != nil {
+		return err
+	}
+
+	err = c.proto.Writer.PrintfLine(fmt.Sprintf("Subject:%s", subject))
+
+	if err != nil {
+		return err
+	}
+
+	err = c.proto.Writer.PrintfLine("")
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (c *SmtpClient) SendMail(to string, from string, subject string, content string) error {
 	err := c.Mail(to)
 
 	if err != nil {
@@ -177,8 +205,20 @@ func (c *SmtpClient) SendMail(to string, from string, content string) error {
 		return err
 	}
 
-	for _, line := range strings.Split(content, ".") {
-		err = c.proto.Writer.PrintfLine(line)
+	err = c.sendHeaders(to, from, subject)
+
+	if err != nil {
+		return err
+	}
+
+	contentLines := strings.Split(content, ".")
+
+	for idx, line := range contentLines {
+		if idx == len(contentLines)-1 {
+			err = c.proto.Writer.PrintfLine(line)
+		} else {
+			err = c.proto.Writer.PrintfLine(fmt.Sprintf("%s.", line))
+		}
 
 		if err != nil {
 			return err
@@ -229,7 +269,7 @@ func main() {
 
 	handleError(err)
 
-	err = client.SendMail("janedoe@example.org", "johndoe@example.com", "Hello Jane. This is my first email. Hope you are good. Good bye.")
+	err = client.SendMail("janedoe@example.org", "johndoe@example.com", "Hello World", "Hello Jane. This is my first email. Hope you are good. Good bye.")
 
 	handleError(err)
 
