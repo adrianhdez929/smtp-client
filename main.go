@@ -133,38 +133,6 @@ func (c *SmtpClient) Data(content string) error {
 		return err
 	}
 
-	for _, line := range strings.Split(content, ".") {
-		id, err = c.proto.Cmd(line)
-
-		if err != nil {
-			return err
-		}
-
-		c.proto.StartResponse(id)
-		defer c.proto.EndResponse(id)
-
-		_, _, err = c.proto.ReadResponse(250)
-
-		if err != nil {
-			return err
-		}
-	}
-
-	id, err = c.proto.Cmd(".")
-
-	if err != nil {
-		return err
-	}
-
-	c.proto.StartResponse(id)
-	defer c.proto.EndResponse(id)
-
-	_, _, err = c.proto.ReadResponse(250)
-
-	if err != nil {
-		return err
-	}
-
 	return nil
 }
 
@@ -182,6 +150,29 @@ func (c *SmtpClient) SendMail(to string, from string, content string) error {
 	}
 
 	err = c.Data(content)
+
+	if err != nil {
+		return err
+	}
+
+	for _, line := range strings.Split(content, ".") {
+		err = c.proto.Writer.PrintfLine(line)
+
+		if err != nil {
+			return err
+		}
+	}
+
+	id, err := c.proto.Cmd("\r\n.")
+
+	if err != nil {
+		return err
+	}
+
+	c.proto.StartResponse(id)
+	defer c.proto.EndResponse(id)
+
+	_, _, err = c.proto.ReadResponse(250)
 
 	if err != nil {
 		return err
