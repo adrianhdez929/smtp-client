@@ -168,6 +168,28 @@ func (c *SmtpClient) Data(content string) error {
 	return nil
 }
 
+func (c *SmtpClient) SendMail(to string, from string, content string) error {
+	err := c.Mail(to)
+
+	if err != nil {
+		return err
+	}
+
+	err = c.Recipient(to)
+
+	if err != nil {
+		return err
+	}
+
+	err = c.Data(content)
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func handleError(err error) {
 	if err != nil {
 		fmt.Printf("error: %s\n", err)
@@ -190,5 +212,13 @@ func main() {
 
 	fmt.Println("send noop command")
 
-	client.Noop()
+	err = client.Noop()
+
+	handleError(err)
+
+	err = client.SendMail("janedoe@example.org", "johndoe@example.com", "Hello Jane. This is my first email. Hope you are good. Good bye.")
+
+	handleError(err)
+
+	fmt.Println("email sent without error")
 }
