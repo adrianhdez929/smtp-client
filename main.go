@@ -10,10 +10,11 @@ import (
 type SmtpClient struct {
 	conn       net.Conn
 	proto      *textproto.Conn
+	domain     string
 	handshaked bool
 }
 
-func NewSmptClient(host string) (*SmtpClient, error) {
+func NewSmptClient(host string, domain string) (*SmtpClient, error) {
 	sock, err := net.Dial("tcp", "localhost:25")
 
 	if err != nil {
@@ -30,6 +31,7 @@ func NewSmptClient(host string) (*SmtpClient, error) {
 	client := SmtpClient{
 		sock,
 		textProto,
+		domain,
 		false,
 	}
 
@@ -40,8 +42,8 @@ func (c *SmtpClient) Close() {
 	c.conn.Close()
 }
 
-func (c *SmtpClient) Handshake() error {
-	id, err := c.proto.Cmd("EHLO localhost")
+func (c *SmtpClient) Handshake(domain string) error {
+	id, err := c.proto.Cmd(fmt.Sprintf("EHLO %s", c.domain))
 
 	if err != nil {
 		return err
@@ -136,6 +138,26 @@ func (c *SmtpClient) Data(content string) error {
 	return nil
 }
 
+func (c *SmtpClient) Quit() error {
+	id, err := c.proto.Cmd("QUIT")
+
+	if err != nil {
+		return err
+	}
+
+	c.proto.StartResponse(id)
+	defer c.proto.EndResponse(id)
+	_, msg, err := c.proto.ReadResponse(221)
+
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Quit result: %s\n", msg)
+
+	return nil
+}
+
 func (c *SmtpClient) SendMail(to string, from string, content string) error {
 	err := c.Mail(to)
 
@@ -189,13 +211,13 @@ func handleError(err error) {
 }
 
 func main() {
-	client, err := NewSmptClient("localhost:25")
+	client, err := NewSmptClient("localhost:25", "example.org")
 
 	handleError(err)
 
 	defer client.Close()
 
-	err = client.Handshake()
+	err = client.Handshake("example.org")
 
 	handleError(err)
 
@@ -212,4 +234,10 @@ func main() {
 	handleError(err)
 
 	fmt.Println("email sent without error")
+
+	err = client.Quit()
+
+	handleError(err)
+
+	fmt.Println("quit called successfully")
 }
