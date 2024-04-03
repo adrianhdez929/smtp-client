@@ -99,7 +99,7 @@ func (c *SmtpClient) Mail(from string) error {
 }
 
 func (c *SmtpClient) Recipient(to string) error {
-	id, err := c.proto.Cmd(fmt.Sprintf("RECIPIENT TO:<%s>", to))
+	id, err := c.proto.Cmd(fmt.Sprintf("RCPT TO:<%s>", to))
 
 	if err != nil {
 		return err
