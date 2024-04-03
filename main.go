@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"net/textproto"
+	"strings"
 )
 
 type SmtpClient struct {
