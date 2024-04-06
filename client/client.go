@@ -165,8 +165,95 @@ func (c *SmtpClient) Handshake(domain string) error {
 	return nil
 }
 
+func (c *SmtpClient) Reset() error {
+	id, err := c.proto.Cmd("RSET")
+
+	if err != nil {
+		return err
+	}
+
+	c.proto.StartResponse(id)
+	defer c.proto.EndResponse(id)
+	_, _, err = c.proto.ReadResponse(250)
+
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("reset was successfull")
+
+	return nil
+}
+
 func (c *SmtpClient) Noop() error {
 	id, err := c.proto.Cmd("NOOP")
+
+	if err != nil {
+		return err
+	}
+
+	c.proto.StartResponse(id)
+	defer c.proto.EndResponse(id)
+	_, msg, err := c.proto.ReadResponse(250)
+
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Noop result: %s\n", msg)
+
+	return nil
+}
+
+func (c *SmtpClient) Verify(content string) error {
+	id, err := c.proto.Cmd("VRFY %s", content)
+
+	if err != nil {
+		return err
+	}
+
+	c.proto.StartResponse(id)
+	defer c.proto.EndResponse(id)
+	_, msg, err := c.proto.ReadResponse(250)
+
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Verify result: %s\n", msg)
+
+	return nil
+}
+
+func (c *SmtpClient) Expand(content string) error {
+	id, err := c.proto.Cmd("EXPN %s", content)
+
+	if err != nil {
+		return err
+	}
+
+	c.proto.StartResponse(id)
+	defer c.proto.EndResponse(id)
+	_, msg, err := c.proto.ReadResponse(250)
+
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Expand result: %s\n", msg)
+
+	return nil
+}
+
+func (c *SmtpClient) Help(content string) error {
+	var id uint
+	var err error
+
+	if content == "" {
+		id, err = c.proto.Cmd("HELP")
+	} else {
+		id, err = c.proto.Cmd("HELP %s", content)
+	}
 
 	if err != nil {
 		return err

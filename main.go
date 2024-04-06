@@ -2,246 +2,8 @@ package main
 
 import (
 	"fmt"
-	"net"
-	"net/textproto"
-	"strings"
+	"smtpclient/client"
 )
-
-type SmtpClient struct {
-	conn       net.Conn
-	proto      *textproto.Conn
-	domain     string
-	handshaked bool
-}
-
-func NewSmptClient(host string, domain string) (*SmtpClient, error) {
-	sock, err := net.Dial("tcp", "localhost:25")
-
-	if err != nil {
-		return nil, err
-	}
-
-	textProto := textproto.NewConn(sock)
-	_, _, err = textProto.ReadResponse(220)
-
-	if err != nil {
-		return nil, err
-	}
-
-	client := SmtpClient{
-		sock,
-		textProto,
-		domain,
-		false,
-	}
-
-	return &client, nil
-}
-
-func (c *SmtpClient) Close() {
-	c.conn.Close()
-}
-
-func (c *SmtpClient) Handshake(domain string) error {
-	id, err := c.proto.Cmd(fmt.Sprintf("EHLO %s", c.domain))
-
-	if err != nil {
-		return err
-	}
-
-	c.proto.StartResponse(id)
-	defer c.proto.EndResponse(id)
-	_, _, err = c.proto.ReadResponse(250)
-
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (c *SmtpClient) Noop() error {
-	id, err := c.proto.Cmd("NOOP")
-
-	if err != nil {
-		return err
-	}
-
-	c.proto.StartResponse(id)
-	defer c.proto.EndResponse(id)
-	_, msg, err := c.proto.ReadResponse(250)
-
-	if err != nil {
-		return err
-	}
-
-	fmt.Printf("Noop result: %s\n", msg)
-
-	return nil
-}
-
-func (c *SmtpClient) Mail(from string) error {
-	id, err := c.proto.Cmd(fmt.Sprintf("MAIL FROM:<%s>", from))
-
-	if err != nil {
-		return err
-	}
-
-	c.proto.StartResponse(id)
-	defer c.proto.EndResponse(id)
-	_, msg, err := c.proto.ReadResponse(250)
-
-	if err != nil {
-		return err
-	}
-
-	fmt.Printf("Mail result: %s\n", msg)
-
-	return nil
-}
-
-func (c *SmtpClient) Recipient(to string) error {
-	id, err := c.proto.Cmd(fmt.Sprintf("RCPT TO:<%s>", to))
-
-	if err != nil {
-		return err
-	}
-
-	c.proto.StartResponse(id)
-	defer c.proto.EndResponse(id)
-	_, msg, err := c.proto.ReadResponse(250)
-
-	if err != nil {
-		return err
-	}
-
-	fmt.Printf("Recipient result: %s\n", msg)
-
-	return nil
-}
-
-func (c *SmtpClient) Data(content string) error {
-	id, err := c.proto.Cmd("DATA")
-
-	if err != nil {
-		return err
-	}
-
-	c.proto.StartResponse(id)
-	defer c.proto.EndResponse(id)
-	_, _, err = c.proto.ReadResponse(354)
-
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (c *SmtpClient) Quit() error {
-	id, err := c.proto.Cmd("QUIT")
-
-	if err != nil {
-		return err
-	}
-
-	c.proto.StartResponse(id)
-	defer c.proto.EndResponse(id)
-	_, msg, err := c.proto.ReadResponse(221)
-
-	if err != nil {
-		return err
-	}
-
-	fmt.Printf("Quit result: %s\n", msg)
-
-	return nil
-}
-
-func (c *SmtpClient) sendHeaders(to string, from string, subject string) error {
-	err := c.proto.Writer.PrintfLine(fmt.Sprintf("From:%s", from))
-
-	if err != nil {
-		return err
-	}
-
-	err = c.proto.Writer.PrintfLine(fmt.Sprintf("To:%s", to))
-
-	if err != nil {
-		return err
-	}
-
-	err = c.proto.Writer.PrintfLine(fmt.Sprintf("Subject:%s", subject))
-
-	if err != nil {
-		return err
-	}
-
-	err = c.proto.Writer.PrintfLine("")
-
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (c *SmtpClient) SendMail(to string, from string, subject string, content string) error {
-	err := c.Mail(to)
-
-	if err != nil {
-		return err
-	}
-
-	err = c.Recipient(to)
-
-	if err != nil {
-		return err
-	}
-
-	err = c.Data(content)
-
-	if err != nil {
-		return err
-	}
-
-	err = c.sendHeaders(to, from, subject)
-
-	if err != nil {
-		return err
-	}
-
-	contentLines := strings.Split(content, ".")
-
-	for idx, line := range contentLines {
-		if idx == len(contentLines)-1 {
-			err = c.proto.Writer.PrintfLine(line)
-		} else {
-			err = c.proto.Writer.PrintfLine(fmt.Sprintf("%s.", line))
-		}
-
-		if err != nil {
-			return err
-		}
-	}
-
-	id, err := c.proto.Cmd("\r\n.")
-
-	if err != nil {
-		return err
-	}
-
-	c.proto.StartResponse(id)
-	defer c.proto.EndResponse(id)
-
-	_, _, err = c.proto.ReadResponse(250)
-
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
 
 func handleError(err error) {
 	if err != nil {
@@ -251,13 +13,18 @@ func handleError(err error) {
 }
 
 func main() {
-	client, err := NewSmptClient("localhost:25", "example.org")
+	auth := client.NewSmtpAuth("admin", "admin")
+	client, err := client.NewSmptClient("localhost:25", "example.org", false)
 
 	handleError(err)
 
 	defer client.Close()
 
 	err = client.Handshake("example.org")
+
+	handleError(err)
+
+	err = client.Auth(auth)
 
 	handleError(err)
 
