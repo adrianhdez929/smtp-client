@@ -284,7 +284,7 @@ func (c *SmtpClient) Help(content string) error {
 		return err
 	}
 
-	fmt.Printf("Noop result: %s\n", msg)
+	fmt.Printf("Help result: %s\n", msg)
 
 	return nil
 }
