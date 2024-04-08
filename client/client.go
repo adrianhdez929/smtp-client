@@ -384,6 +384,8 @@ func (c *SmtpClient) Quit() error {
 		return err
 	}
 
+	c.conn.Close()
+
 	fmt.Printf("Quit result: %s\n", msg)
 
 	return nil
