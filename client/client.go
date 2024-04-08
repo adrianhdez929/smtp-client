@@ -93,22 +93,39 @@ func (c *SmtpClient) Auth(auth SmtpAuth) error {
 
 	if c.tls {
 		// Secure connection, PLAIN auth
-		command = fmt.Sprintf("AUTH PLAIN %s", auth.Plain())
+		for _, ext := range c.extensions["AUTH"] {
+			if ext == "PLAIN" {
+				command = fmt.Sprintf("AUTH PLAIN %s", auth.Plain())
+				break
+			}
+		}
+		if command == "" {
+			return errors.New("server does not support plain auth")
+		}
 	} else {
 		// Insecure connection CRAM-MD5
-		challenge, err := c.requestMd5Challenge()
+		for _, ext := range c.extensions["AUTH"] {
+			if ext == "CRAM-MD5" {
 
-		if err != nil {
-			return err
+				challenge, err := c.requestMd5Challenge()
+
+				if err != nil {
+					return err
+				}
+
+				solved, err := auth.CramMd5(challenge)
+
+				if err != nil {
+					return err
+				}
+				command = solved
+				break
+			}
 		}
 
-		solved, err := auth.CramMd5(challenge)
-
-		if err != nil {
-			return err
+		if command == "" {
+			return errors.New("server does not support md5 auth")
 		}
-
-		command = solved
 	}
 
 	id, err := c.proto.Cmd(command)
