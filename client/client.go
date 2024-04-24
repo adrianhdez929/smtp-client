@@ -1,13 +1,22 @@
 package client
 
 import (
+	"bufio"
 	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
 	"net/textproto"
+	"os"
 	"strings"
 )
+
+var contentTypes = map[string][]string{
+	"application": {"json", "html"},
+	"image":       {"jpeg", "jpg", "png"},
+	"audio":       {"mp3", "wav", "m4a"},
+	"video":       {"mp4", "mpg", "mkv", "3gp"},
+}
 
 type SmtpClient struct {
 	conn       net.Conn
@@ -20,7 +29,7 @@ type SmtpClient struct {
 }
 
 func NewSmptClient(host string, domain string, secure bool) (*SmtpClient, error) {
-	sock, err := net.Dial("tcp", "localhost:25")
+	sock, err := net.Dial("tcp", host)
 
 	if err != nil {
 		return nil, err
@@ -51,7 +60,7 @@ func (c *SmtpClient) Close() error {
 }
 
 func (c *SmtpClient) loadExtensions(helloResponse string) {
-	lines := strings.Split(helloResponse, "\r\n")
+	lines := strings.Split(helloResponse, "\n")
 
 	for _, line := range lines {
 		if strings.Contains(line, "=") {
@@ -93,39 +102,37 @@ func (c *SmtpClient) Auth(auth SmtpAuth) error {
 
 	if c.tls {
 		// Secure connection, PLAIN auth
-		for _, ext := range c.extensions["AUTH"] {
-			if ext == "PLAIN" {
-				command = fmt.Sprintf("AUTH PLAIN %s", auth.Plain())
-				break
-			}
-		}
-		if command == "" {
-			return errors.New("server does not support plain auth")
-		}
+		// for _, ext := range c.extensions["AUTH"] {
+		// 	if ext == "PLAIN" {
+		// 		break
+		command = fmt.Sprintf("AUTH PLAIN %s", auth.Plain())
+		// 	}
+		// }
+		// if command == "" {
+		// 	return errors.New("server does not support plain auth")
+		// }
 	} else {
 		// Insecure connection CRAM-MD5
-		for _, ext := range c.extensions["AUTH"] {
-			if ext == "CRAM-MD5" {
-
-				challenge, err := c.requestMd5Challenge()
-
-				if err != nil {
-					return err
-				}
-
-				solved, err := auth.CramMd5(challenge)
-
-				if err != nil {
-					return err
-				}
-				command = solved
-				break
-			}
+		challenge, err := c.requestMd5Challenge()
+		if err != nil {
+			return err
 		}
-
-		if command == "" {
-			return errors.New("server does not support md5 auth")
+		solved, err := auth.CramMd5(challenge)
+		if err != nil {
+			return err
 		}
+		command = solved
+		// for _, ext := range c.extensions["AUTH"] {
+		// 	fmt.Println(ext)
+		// 	if ext == "CRAM-MD5" {
+
+		// 		break
+		// 	}
+		// }
+
+		// if command == "" {
+		// 	return errors.New("server does not support md5 auth")
+		// }
 	}
 
 	id, err := c.proto.Cmd(command)
@@ -425,6 +432,12 @@ func (c *SmtpClient) sendHeaders(to string, from string, subject string) error {
 		return err
 	}
 
+	err = c.proto.Writer.PrintfLine("Content-Type: multipart/mixed; boundary=boundary1")
+
+	if err != nil {
+		return err
+	}
+
 	err = c.proto.Writer.PrintfLine("")
 
 	if err != nil {
@@ -434,7 +447,28 @@ func (c *SmtpClient) sendHeaders(to string, from string, subject string) error {
 	return nil
 }
 
-func (c *SmtpClient) SendMail(to string, from string, subject string, content string) error {
+func (c *SmtpClient) loadFileData(path string) error {
+	file, err := os.Open(path)
+
+	if err != nil {
+		return err
+	}
+
+	defer file.Close()
+
+	scn := bufio.NewScanner(file)
+
+	for scn.Scan() {
+		err = c.proto.Writer.PrintfLine(scn.Text())
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (c *SmtpClient) SendMail(to string, from string, subject string, content string, attatchments []string) error {
 	err := c.Mail(to)
 
 	if err != nil {
@@ -455,12 +489,22 @@ func (c *SmtpClient) SendMail(to string, from string, subject string, content st
 
 	err = c.sendHeaders(to, from, subject)
 
+	fmt.Println("headers sent")
+
 	if err != nil {
 		return err
 	}
 
 	contentLines := strings.Split(content, ".")
 
+	err = c.proto.Writer.PrintfLine("--boundary1")
+	if err != nil {
+		return err
+	}
+	err = c.proto.Writer.PrintfLine("Content-Type: text/plain; charset=utf-8")
+	if err != nil {
+		return err
+	}
 	for idx, line := range contentLines {
 		if idx == len(contentLines)-1 {
 			err = c.proto.Writer.PrintfLine(line)
@@ -471,6 +515,66 @@ func (c *SmtpClient) SendMail(to string, from string, subject string, content st
 		if err != nil {
 			return err
 		}
+	}
+
+	err = c.proto.Writer.PrintfLine("")
+	if err != nil {
+		return err
+	}
+
+	for _, attatchment := range attatchments {
+		err = c.proto.Writer.PrintfLine("--boundary1")
+		if err != nil {
+			return err
+		}
+
+		splitAtt := strings.Split(attatchment, "/")
+		filename := splitAtt[len(splitAtt)-1]
+		splitName := strings.Split(filename, ".")
+		filext := splitName[len(splitName)-1]
+		var filetype string
+
+		for contentType := range contentTypes {
+			for _, ext := range contentTypes[contentType] {
+				if strings.ToLower(filext) == ext {
+					filetype = fmt.Sprintf("%s/%s", contentType, ext)
+				}
+			}
+		}
+
+		if filetype == "" {
+			filetype = "text/plain"
+		}
+
+		err = c.proto.Writer.PrintfLine(fmt.Sprintf("Content-Type: %s", filetype))
+		if err != nil {
+			return err
+		}
+
+		err = c.proto.Writer.PrintfLine(fmt.Sprintf("Content-Disposition: attachment; filename=%s", filename))
+		if err != nil {
+			return err
+		}
+
+		err = c.proto.Writer.PrintfLine("")
+
+		if err != nil {
+			return err
+		}
+
+		c.loadFileData(attatchment)
+
+		err = c.proto.Writer.PrintfLine("")
+
+		if err != nil {
+			return err
+		}
+
+	}
+
+	err = c.proto.Writer.PrintfLine("--boundary1--")
+	if err != nil {
+		return err
 	}
 
 	id, err := c.proto.Cmd("\r\n.")

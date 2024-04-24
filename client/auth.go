@@ -19,6 +19,10 @@ func NewSmtpAuth(username string, password string) SmtpAuth {
 	}
 }
 
+func (a SmtpAuth) Username() string {
+	return a.username
+}
+
 func (a SmtpAuth) Plain() string {
 	authString := "\x00" + a.username + "\x00" + a.password
 	encodedAuth := base64.StdEncoding.EncodeToString([]byte(authString))
